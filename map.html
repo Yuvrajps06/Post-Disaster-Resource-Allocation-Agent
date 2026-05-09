@@ -1,0 +1,214 @@
+from pathlib import Path
+
+html = r'''<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dynamic Assam Logistics Map</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"/>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f3f4f6;
+    }
+
+    header {
+      background: #111827;
+      color: white;
+      text-align: center;
+      padding: 14px;
+      font-size: 22px;
+      font-weight: bold;
+    }
+
+    #map {
+      width: 100%;
+      height: 92vh;
+    }
+
+    .leaflet-routing-container {
+      display: none;
+    }
+
+    .node-label {
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #444;
+      border-radius: 6px;
+      padding: 3px 6px;
+      font-size: 12px;
+      font-weight: bold;
+      color: #111;
+    }
+
+    .distance-label {
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #444;
+      border-radius: 5px;
+      padding: 2px 6px;
+      font-size: 11px;
+      color: #111;
+    }
+  </style>
+</head>
+<body>
+
+<header>Assam Disaster Logistics — Dynamic Road Distances</header>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+<script>
+
+const nodes = {
+    warehouse_guwahati: [26.1445, 91.7362],
+    nh27_junction: [26.2006, 91.9801],
+    barpeta_relief_camp: [26.3229, 91.0063],
+    kaziranga_checkpoint: [26.5775, 93.1711],
+    flood_zone_assam: [26.4521, 92.0308],
+    medical_depot_nagaon: [26.3480, 92.6838],
+};
+
+const edges = [
+    ["warehouse_guwahati", "nh27_junction"],
+    ["nh27_junction", "flood_zone_assam"],
+    ["warehouse_guwahati", "barpeta_relief_camp"],
+    ["barpeta_relief_camp", "flood_zone_assam"],
+    ["nh27_junction", "medical_depot_nagaon"],
+    ["medical_depot_nagaon", "flood_zone_assam"],
+    ["medical_depot_nagaon", "kaziranga_checkpoint"],
+    ["kaziranga_checkpoint", "flood_zone_assam"]
+];
+
+const map = L.map('map').setView([26.35, 92.2], 8);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+
+// Add nodes
+Object.entries(nodes).forEach(([name, coords]) => {
+
+    let color = "blue";
+
+    if (name.includes("warehouse")) color = "green";
+    if (name.includes("flood")) color = "red";
+    if (name.includes("medical")) color = "purple";
+
+    const marker = L.circleMarker(coords, {
+        radius: 8,
+        color: color,
+        fillColor: color,
+        fillOpacity: 0.9,
+        weight: 2
+    }).addTo(map);
+
+    // Permanent label
+    L.marker(coords, {
+        icon: L.divIcon({
+            className: "node-label",
+            html: name.replaceAll("_", " "),
+            iconSize: [150, 20]
+        })
+    }).addTo(map);
+
+    // Hover popup with values
+    marker.bindTooltip(`
+        <b>${name.replaceAllAll ? name.replaceAllAll("_", " ") : name.replaceAll("_", " ")}</b><br>
+        Latitude: ${coords[0]}<br>
+        Longitude: ${coords[1]}
+    `, {
+        sticky: true
+    });
+
+});
+
+
+// Create real-road routes + dynamic distances
+edges.forEach(edge => {
+
+    const startName = edge[0];
+    const endName = edge[1];
+
+    const start = nodes[startName];
+    const end = nodes[endName];
+
+    const control = L.Routing.control({
+        waypoints: [
+            L.latLng(start[0], start[1]),
+            L.latLng(end[0], end[1])
+        ],
+        routeWhileDragging: false,
+        draggableWaypoints: false,
+        addWaypoints: false,
+        fitSelectedRoutes: false,
+        show: false,
+
+        lineOptions: {
+            styles: [{
+                color: '#f59e0b',
+                opacity: 0.85,
+                weight: 5
+            }]
+        },
+
+        createMarker: function() {
+            return null;
+        }
+
+    }).addTo(map);
+
+
+    // Dynamically get route distance from OSRM route
+    control.on('routesfound', function(e) {
+
+        const route = e.routes[0];
+
+        // meters -> km
+        const distanceKm = (route.summary.totalDistance / 1000).toFixed(1);
+
+        const coordinates = route.coordinates;
+
+        const midpoint = coordinates[Math.floor(coordinates.length / 2)];
+
+        const distanceMarker = L.marker([midpoint.lat, midpoint.lng], {
+
+            icon: L.divIcon({
+                className: "distance-label",
+                html: `${distanceKm} km`,
+                iconSize: [70, 20]
+            })
+
+        }).addTo(map);
+
+        distanceMarker.bindTooltip(`
+            <b>Road Distance</b><br>
+            ${startName.replaceAll("_"," ")}
+            →
+            ${endName.replaceAll("_"," ")}<br>
+            Distance: ${distanceKm} km
+        `, {
+            sticky: true
+        });
+
+    });
+
+});
+
+</script>
+
+</body>
+</html>
+'''
+
+path = Path("/mnt/data/assam_dynamic_distance_map.html")
+path.write_text(html, encoding="utf-8")
+
+print(f"Saved dynamic map to: {path}")
